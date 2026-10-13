@@ -13,6 +13,7 @@ import 'package:venera_next/features/comic_source/source.dart';
 import 'package:venera_next/foundation/app.dart';
 import 'package:venera_next/foundation/appdata.dart';
 import 'package:venera_next/foundation/cache_manager.dart';
+import 'package:venera_next/network/cookie_jar.dart';
 import 'package:venera_next/foundation/js_engine.dart';
 import 'package:venera_next/foundation/log.dart';
 import 'package:venera_next/foundation/res.dart';
@@ -261,6 +262,8 @@ void main() {
     appdata.settings['proxy'] = proxy == null || proxy.isEmpty ? 'direct' : proxy;
     Log.isMuted = true;
     await rhttp.Rhttp.init();
+    // The nhentai details path reads cookies even when not authenticated.
+    await SingleInstanceCookieJar.createInstance(directory: tempDir!.path);
     await JsEngine().init();
     engineReady = true;
     ImageDownloader.configureSourceImageLoading(
@@ -284,6 +287,7 @@ void main() {
       }
       if (engineReady) await JsEngine().closeAndWait();
       if (CacheManager.instance != null) await CacheManager.instance!.dispose();
+      SingleInstanceCookieJar.instance?.dispose();
       HttpOverrides.global = previousHttp;
       await tempDir?.delete(recursive: true);
       Log.isMuted = false;
