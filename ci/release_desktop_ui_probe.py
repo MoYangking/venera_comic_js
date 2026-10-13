@@ -251,7 +251,7 @@ def run():
     rows = visible_windows().splitlines()
     ident = next((row.split()[0] for row in rows if "venera" in row.casefold()), "")
     geometry = shell(["xdotool", "getwindowgeometry", "--shell", ident], timeout=8)
-    width_match = re.search(r"^WIDTH=(\\d+)$", geometry, re.MULTILINE)
+    width_match = re.search(r"^WIDTH=(\d+)$", geometry, re.MULTILINE)
     width = int(width_match.group(1)) if width_match else 0
     mark("desktop.geometry", "INFO", "window width=%s, raw=%s" % (width, geometry.replace("\\n", " ")[:170]))
     if width and width < 1050:
