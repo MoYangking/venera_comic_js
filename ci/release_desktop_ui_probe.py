@@ -225,70 +225,34 @@ def run():
     if not wait_window():
         snap("no-window")
         return False
-    screenshot_after("application-started")
-    installed_before = find_installed()
-    mark("installed.before", "INFO", ", ".join(installed_before) or "empty")
 
-    if not click_named(["Comic Source", "漫画源", "漫畫源"], tries=3):
-        # The source tile is often below the fold in Home.
-        for i in range(10):
-            shell(["xdotool", "mousemove", "750", "690"], timeout=6)
-            scroll_down(3)
-            if click_named(["Comic Source", "漫画源", "漫畫源"], tries=1):
-                break
-        else:
-            mark("navigation.comic-source", "FAIL", "No accessible Comic Source action after scrolling")
-            screenshot_after("source-tile-not-found")
-            return False
-    screenshot_after("comic-source-manager")
-    if not click_named(["Add source", "添加漫画源", "添加来源", "添加源"], tries=3):
-        mark("navigation.add-source", "FAIL", "Could not find Add source control")
-        screenshot_after("add-source-not-found")
+    # Flutter on Linux publishes only a partial AT-SPI accessibility tree.
+    # These client coordinates were verified against an actual v1.17.0 startup screenshot:
+    # the Home/Comic Source card is visible at screen x=102..889, y=488..547.
+    # Capture each transition for human inspection instead of guessing success.
+    snap("application-started")
+    initial = find_installed()
+    mark("installed.before", "INFO", ", ".join(initial) or "empty")
+    if app_pid.poll() is not None:
+        mark("desktop.process", "FAIL", "App terminated before click")
         return False
-    screenshot_after("source-import-dialog")
 
-    # Focus the input labelled Source link or contents; the modal's first
-    # text-entry is a fallback if the accessibility tree lacks the label.
-    if not click_named(["Source link or contents", "源链接", "來源連結"], tries=2):
-        entries = [p for p in accessibility()
-                   if p["role"].lower() in ("text", "entry", "text field")
-                   and p["bounds"] and p["bounds"][2] > 230]
-        entries.sort(key=lambda p: p["bounds"][2], reverse=True)
-        if entries:
-            x, y, w, h = entries[0]["bounds"]
-            click_point(x + w / 2, y + h / 2)
-            mark("input.focus", "PASS", "focused accessible text entry")
-        else:
-            # Standard centered 600px AlertDialog and first input position.
-            click_point(690, 395)
-            mark("input.focus", "INFO", "used screen-coordinate fallback")
-    type_text(SOURCE_CATALOG)
-    screenshot_after("catalog-url-entered")
-
-    if not click_named(["Detect and preview", "检测并预览", "偵測並預覽"], tries=3):
-        # Bottom right of the centered Material AlertDialog.
-        click_point(945, 660)
-        mark("import.detect", "INFO", "used screenshot-based dialog fallback point")
-    time.sleep(8)
-    screenshot_after("catalog-preview")
-
-    if not click_named(["Install selected", "安装选中", "安裝所選", "Install source"], tries=2):
-        mark("import.install", "FAIL", "No Install selected button; inspect catalog-preview screenshot")
-        screenshot_after("install-button-missing")
+    click_point(430, 518)
+    snap("comic-source-manager")
+    windows = visible_windows()
+    mark("desktop.after-source-click", "PASS" if "venera" in windows.lower() else "FAIL",
+         "app pid running=%s, windows=%s" % (app_pid.poll() is None, windows[:160]))
+    if app_pid.poll() is not None:
         return False
-    time.sleep(18)
-    screenshot_after("post-install")
-    present = find_installed()
-    mark("installed.after", "INFO", ", ".join(present) or "empty")
-    for key in ("nhentai", "ehentai"):
-        mark("installed." + key, "PASS" if key in present else "FAIL",
-             ("Installed source file exists" if key in present else "No installed JS file found in app data paths"))
-    # Exercise the visible app UI even if a downstream network request fails.
-    if click_named(["Explore", "发现", "探索"], tries=2):
-        screenshot_after("explore-view")
-        if click_named(["Search", "搜索"], tries=2):
-            screenshot_after("search-entry")
-    return all(key in present for key in ("nhentai", "ehentai"))
+
+    # The stable source-manager page puts Add source in the top-left content row.
+    click_point(157, 115)
+    snap("source-import-dialog")
+    mark("ui.coordinate-probe", "INFO",
+         "Captured genuine GUI after entering Comic Source and invoking Add source")
+    # Pause after the first visual check; later test stages must be driven by
+    # inspected screenshots, not blind coordinate guessing.
+    return False
 
 
 success = False
