@@ -407,3 +407,136 @@ test('nhentai search accepts punctuation after correct URL encoding', async () =
     const { source } = create('nhentai.js', { requests: { [endpoint]: json({ result: [], num_pages: 1 }) } });
     assert.equal((await source.search.load("artist:o'brien~test", ['date'], 1)).maxPage, 1);
 });
+
+// Regressions based on public browser captures from 2026-10-13.
+// Fixtures intentionally omit any real titles, image bytes, and credentials.
+test('nhentai API v2 actual list shape has tag_ids, no tag objects', async () => {
+    const row = { id: 687263, media_id: '1234567', english_title: 'Neutral test',
+        japanese_title: 'Alternative test', thumbnail: 'galleries/1234567/thumb.webp',
+        num_pages: 27, tag_ids: [17249, 12227], blacklisted: false };
+    const { source } = create('nhentai.js', {
+        requests: { [nh + '/galleries?page=1']: json({
+            result: [row], num_pages: 26025, per_page: 25, total: 650593
+        }) }
+    });
+    const data = await source.explore[0].load(1);
+    assert.equal(data.comics[0].title, 'Neutral test');
+    assert.equal(data.comics[0].cover, 'https://t3.nhentai.net/galleries/1234567/thumb.webp');
+    assert.equal(data.comics[0].language, 'english');
+    assert.equal(data.comics[0].maxPage, 27);
+    assert.equal(data.maxPage, 26025);
+});
+
+test('nhentai recognizes the three documented language IDs without rich tags', () => {
+    const { source } = create('nhentai.js');
+    for (const [id, label] of [[12227, 'english'], [6346, 'japanese'], [29963, 'chinese']]) {
+        assert.equal(source.toComic({id: 7, english_title: 'Sample', thumbnail: 'x.jpg', tag_ids: [id] }).language, label);
+    }
+    assert.equal(source.toComic({id: 8, english_title: 'Sample', tag_ids: [] }).language, '');
+});
+
+function spriteGalleryDoc({ p = 0, last = 3 } = {}) {
+    const host = 'https://static.example.invalid/sheet.webp';
+    const style1 = 'width:200px;height:290px;background:transparent url(' + host + ') -0px 0 no-repeat';
+    const style2 = 'width:200px;height:200px;background:transparent url(' + host + ') -200px -300px no-repeat';
+    const anchors = [
+        elem({ attrs: { href: img1 }, one: { div: elem({ attrs: { style: style1 } }) } }),
+        elem({ attrs: { href: img2 }, one: { div: elem({ attrs: { style: style2 } }) } })
+    ];
+    return doc({
+        one: {
+            '#gn': elem({ text: 'A legal sample' }),
+            '#gj': elem({ text: 'Alternate title' }),
+            '#gd1 div': elem({ attrs: { style: 'background:url(https://static.example.invalid/cover.webp)' } }),
+            '#favoritelink': elem({ text: 'Add to Favorites' })
+        },
+        many: {
+            '#gdt a': anchors,
+            '#gdt img': [],
+            '#gdd tr': [elem({ text: 'Length: 62 pages' })],
+            'table.ptb a': Array.from({ length: last + 1 }, (_, n) => elem({ attrs: { href: gallery + (n ? '?p=' + n : '') } }))
+        }
+    });
+}
+
+test('E-Hentai gt200 CSS sprites are extracted from anchors instead of missing .gt100 descendants', async () => {
+    const d = spriteGalleryDoc();
+    const { source } = create('ehentai.js', {
+        requests: { [gallery]: html('sprite-gallery') },
+        documents: { '<html:sprite-gallery>': d }
+    });
+    const chunk = await source.comic.loadThumbnails(gallery, null);
+    assert.deepEqual(Array.from(chunk.urls), [img1, img2]);
+    assert.deepEqual(Array.from(chunk.thumbnails), [
+        'https://static.example.invalid/sheet.webp@x=0-200&y=0-290',
+        'https://static.example.invalid/sheet.webp@x=200-400&y=300-500'
+    ]);
+    assert.equal(chunk.next, '1');
+});
+
+test('E-Hentai gallery info supports CSS-only gt200 thumbnails', async () => {
+    const d = spriteGalleryDoc();
+    const { source } = create('ehentai.js', {
+        requests: { [gallery]: html('sprite-detail') },
+        documents: { '<html:sprite-detail>': d }
+    });
+    const detail = await source.comic.loadInfo(gallery);
+    assert.equal(detail.maxPage, 62);
+    assert.equal(detail.thumbnails.length, 2);
+    assert.match(detail.thumbnails[0], /@x=0-200&y=0-290$/);
+    assert.equal(detail.cover, 'https://static.example.invalid/cover.webp');
+});
+
+test('E-Hentai final gallery page returns a null next cursor', async () => {
+    const d = spriteGalleryDoc({p: 3, last: 3});
+    const { source } = create('ehentai.js', {
+        requests: { [gallery + '?p=3']: html('last-sprite-page') },
+        documents: { '<html:last-sprite-page>': d }
+    });
+    const last = await source.comic.loadThumbnails(gallery, '3');
+    assert.equal(last.next, null);
+    assert.equal(last.thumbnails.length, 2);
+});
+
+test('ExHentai blank 200 is reported as a permission error instead of an empty catalog', async () => {
+    const { source } = create('ehentai.js', {
+        settings: {domain: 'exhentai.org'},
+        requests: {'https://exhentai.org/': {status: 200, body: '<html><head></head><body></body></html>'}}
+    });
+    await assert.rejects(() => source.explore[0].loadNext(null), /login or access permission/);
+    const { source: emptyBody } = create('ehentai.js', {
+        settings: {domain: 'exhentai.org'},
+        requests: {'https://exhentai.org/': {status: 200, body: ''}}
+    });
+    await assert.rejects(() => emptyBody.explore[0].loadNext(null), /login or access permission/);
+});
+
+test('E-Hentai observed advanced rating options start at two stars', () => {
+    const { source } = create('ehentai.js');
+    const opts = source.search.optionList.find(o => o.label === 'Minimum rating').options;
+    assert.ok(opts.includes('2-2'));
+    assert.ok(!opts.includes('1-1'));
+    assert.equal(source.buildSearchUrl('landscape', [null, '1']),
+        'https://e-hentai.org/?f_search=landscape');
+    assert.equal(source.buildSearchUrl('landscape', [null, '5']),
+        'https://e-hentai.org/?f_search=landscape&f_srdd=5');
+});
+
+test('E-Hentai favorite sprite may be directly attached to #fav', async () => {
+    const d = galleryDoc();
+    const prior = d.querySelector.bind(d);
+    d.querySelector = s => s === '#fav' ? elem({attrs:{style:'background-position:0px -40px;'}}) :
+        s === '#favoritelink' ? elem({text:'Remove from Favorites'}) : prior(s);
+    const { source } = create('ehentai.js', {
+        requests: {[gallery]:html('favorite-root')},
+        documents: {'<html:favorite-root>': d}
+    });
+    const result = await source.comic.loadInfo(gallery);
+    assert.equal(result.favoriteFolder, '2');
+});
+
+test('E-Hentai rejects unsupported data/blob thumbnail schemes', () => {
+    const { source } = create('ehentai.js');
+    assert.equal(source.absolute('data:image/gif;base64,AAAA'), '');
+    assert.equal(source.absolute('blob:https://example.invalid/123'), '');
+});
