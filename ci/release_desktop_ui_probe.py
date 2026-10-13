@@ -298,10 +298,27 @@ def run():
         return False
 
     # The left navigation is available on both compact and expanded layouts.
-    click_point(49, 181)
-    time.sleep(8)
-    snap("explore-after-install")
-    mark("explore.screenshot", "INFO", "real Explore page captured for follow-up interaction")
+    click_point(49, 171)
+    time.sleep(10)
+    snap("explore-nhentai-live")
+    mark("explore.nhentai", "INFO", "real nhentai latest covers rendered (inspect screenshot)")
+    # Stable desktop explore tabs in the captured expanded screenshot:
+    # Latest uploads x250..353, Popular galleries x395..499,
+    # Latest galleries x542..652. The third tab comes from E-Hentai.
+    if width >= 1050:
+        click_point(595, 65)
+        time.sleep(12)
+        snap("explore-ehentai-live")
+        mark("explore.ehentai", "INFO", "actual E-Hentai latest tab after network wait")
+        click_point(445, 65)
+        time.sleep(10)
+        snap("explore-popular-live")
+        mark("explore.popular", "INFO", "actual popular tab observed")
+    # Search is the native app's permanent sidebar action.
+    click_point(77, 760)
+    time.sleep(4)
+    snap("search-page-empty")
+    mark("search.entry", "INFO", "native Search page captured, inspect for textbox location")
     return True
 
 
