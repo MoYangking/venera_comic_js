@@ -115,6 +115,19 @@ jobs:
           ps -p "$wm_pid" -o pid,args || true
           dbus-run-session -- /usr/bin/python3 ci/release_desktop_ui_probe.py
 
+      # CI log carries reviewable PNG evidence even when the host offers only
+      # the GitHub connector and cannot browse the ZIP artifact directly.
+      - name: Show captured GUI screenshots as encoded diagnostic evidence
+        if: always()
+        shell: bash
+        run: |
+          for file in "$VENERA_UI_REPORT_DIR"/0?-*.png; do
+            [[ -f "$file" ]] || continue
+            echo "GITHUB_DESKTOP_SCREENSHOT_START:$(basename "$file")"
+            base64 -w0 "$file"
+            printf '\nGITHUB_DESKTOP_SCREENSHOT_END:%s\n' "$(basename "$file")"
+          done
+
       - name: Publish observed facts to GitHub run summary
         if: always()
         shell: bash
