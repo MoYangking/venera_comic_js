@@ -246,7 +246,9 @@ def run():
         return False
 
     # The stable source-manager page puts Add source in the top-left content row.
-    click_point(157, 115)
+    # Manager expands to 1380x850 after navigation. The Add source button
+    # in the verified screenshot is at x=245..382, y=99..132.
+    click_point(318, 116)
     snap("source-import-dialog")
     mark("ui.coordinate-probe", "INFO",
          "Captured genuine GUI after entering Comic Source and invoking Add source")
