@@ -1,0 +1,116 @@
+name: Venera-Next real runtime / live sources
+
+# Slow end-to-end network checks run separately from fast Node contract tests.
+# These use upstream Flutter, native QuickJS, Rust transport and ImageDownloader.
+on:
+  push:
+    branches: [main]
+    paths:
+      - nhentai.js
+      - ehentai.js
+      - index.json
+      - ci/venera_source_live_test.dart
+      - .github/workflows/venera-live.yml
+  schedule:
+    - cron: '17 3 * * 1,4'
+  workflow_dispatch:
+    inputs:
+      site:
+        description: 'Which public source?'
+        required: true
+        type: choice
+        options: [both, nhentai, ehentai]
+        default: both
+      download:
+        description: 'Actually download one cover and one first page per source?'
+        required: true
+        type: boolean
+        default: true
+      upstream_ref:
+        description: 'Venera-Next tag, branch, or commit'
+        required: true
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: venera-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live:
+    name: Flutter / QuickJS / real remote services
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - name: Check out maintained comic sources
+        uses: actions/checkout@v4
+        with:
+          path: sources
+          persist-credentials: false
+      - name: Check out real Venera-Next runtime
+        uses: actions/checkout@v4
+        with:
+          repository: CyrilPeng/Venera-Next
+          ref: ${{ inputs.upstream_ref || 'main' }}
+          path: venera-next
+          persist-credentials: false
+      - name: Install pinned Flutter SDK from Venera-Next pubspec
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: venera-next/pubspec.yaml
+          architecture: x64
+          cache: true
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libsqlite3-dev
+      - name: Resolve locked Flutter dependencies
+        working-directory: venera-next
+        run: flutter pub get --enforce-lockfile
+      - name: Build real Rhttp Rust transport
+        working-directory: venera-next
+        env:
+          RUSTFLAGS: --cfg reqwest_unstable
+        run: |
+          cargo build --locked --manifest-path packages/rhttp/rust/Cargo.toml --lib
+          mkdir -p build/test-native/lib
+          cp packages/rhttp/rust/target/debug/librhttp.so build/test-native/lib/
+      - name: Build actual Venera native test plugins
+        working-directory: venera-next
+        run: python3 .github/scripts/prepare_linux_test_libraries.py
+      - name: Install maintained sources in upstream Flutter test tree
+        run: |
+          cp sources/ci/venera_source_live_test.dart venera-next/test/venera_source_live_test.dart
+          mkdir -p sources/reports
+          cd venera-next
+          git rev-parse HEAD > ../sources/reports/venera-upstream-commit.txt
+      - name: Live test search, pagination, rankings, reading and downloads
+        working-directory: venera-next
+        shell: bash
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/venera-next/build/test-native/lib
+          VENERA_SOURCES_DIR: ${{ github.workspace }}/sources
+          VENERA_LIVE_REPORT_DIR: ${{ github.workspace }}/sources/reports
+          VENERA_LIVE_SITE: ${{ inputs.site || 'both' }}
+          VENERA_LIVE_DOWNLOAD: ${{ github.event_name != 'workflow_dispatch' || inputs.download }}
+          VENERA_HTTP_PROXY: ${{ secrets.VENERA_HTTP_PROXY }}
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded --timeout 10m test/venera_source_live_test.dart \
+            2>&1 | tee ../sources/reports/flutter-test.log
+      - name: Upload sanitized results even if sites block GitHub IPs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: venera-live-report-${{ github.run_number }}
+          path: |
+            sources/reports/*.json
+            sources/reports/*.md
+            sources/reports/*.txt
+            sources/reports/flutter-test.log
+          retention-days: 14
+          if-no-files-found: warn
