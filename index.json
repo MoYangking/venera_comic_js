@@ -1,0 +1,16 @@
+[
+  {
+    "name": "nhentai",
+    "key": "nhentai",
+    "version": "1.0.0",
+    "fileName": "nhentai.js",
+    "description": "nhentai.net: latest galleries, search, details and reading"
+  },
+  {
+    "name": "E-Hentai",
+    "key": "ehentai",
+    "version": "1.0.0",
+    "fileName": "ehentai.js",
+    "description": "e-hentai.org: latest/popular galleries, search, details and reading"
+  }
+]
