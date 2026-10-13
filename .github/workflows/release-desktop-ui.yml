@@ -1,0 +1,133 @@
+name: Venera-Next official release desktop UI screenshots
+
+# Installs a published binary; does not substitute QuickJS unit tests for UI tests.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-desktop-ui.yml'
+      - 'ci/release_desktop_ui_probe.py'
+      - 'index.json'
+      - 'nhentai.js'
+      - 'ehentai.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: venera-official-gui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actual-release-desktop:
+    name: Install v1.17.0 desktop, import catalog, capture real screenshots
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      VENERA_RELEASE_VERSION: v1.17.0
+      VENERA_UI_REPORT_DIR: ${{ github.workspace }}/release-ui-report
+      VENERA_SOURCE_CATALOG: https://raw.githubusercontent.com/MoYangking/venera_comic_js/main/index.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create report directory
+        run: mkdir -p release-ui-report
+
+      - name: Install X11 desktop automation and GTK dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            xvfb x11-utils xdotool wmctrl scrot dbus-x11 at-spi2-core \
+            python3-pyatspi libgtk-3-0 libsqlite3-0 \
+            libgl1-mesa-dri fonts-noto-cjk
+
+      - name: Download official Venera-Next v1.17.0 Linux release (pinned SHA-256)
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/CyrilPeng/Venera-Next/releases/download/v1.17.0/venera-next_1.17.0_amd64.deb"
+          curl -fLSs --retry 3 --retry-all-errors --connect-timeout 15 \
+            --max-time 150 -o venera-next.deb "$url"
+          echo '0ee4d790ef658e7e2573e57f3c59d118d393443a823d03add819ee46486b7b29  venera-next.deb' | sha256sum --check
+          dpkg-deb -f venera-next.deb Package Version
+          dpkg-deb -c venera-next.deb | grep -E '/(bin|applications)/|\.desktop' | head -25
+
+      - name: Install the actual desktop app
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y ./venera-next.deb
+          package="$(dpkg-deb -f venera-next.deb Package)"
+          dpkg -L "$package" | grep -E '/bin/|\.desktop$' | head -40
+          exe=""
+          for candidate in venera-next venera_next VeneraNext venera; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              exe="$(command -v "$candidate")"
+              break
+            fi
+          done
+          if [[ -z "$exe" ]]; then
+            desktop="$(dpkg -L "$package" | grep -E '\.desktop$' | head -1 || true)"
+            if [[ -n "$desktop" ]]; then
+              cmd="$(grep -m1 '^Exec=' "$desktop" | cut -d= -f2- | awk '{print $1}')"
+              if [[ -x "$cmd" ]]; then exe="$cmd"; else exe="$(command -v "$cmd" || true)"; fi
+            fi
+          fi
+          if [[ -z "$exe" ]]; then
+            exe="$(find /opt /usr/lib -maxdepth 6 -type f \( -name 'venera_next' -o -name 'VeneraNext' -o -name 'venera-next' \) -perm /111 -print -quit 2>/dev/null || true)"
+          fi
+          if [[ -z "$exe" || ! -x "$exe" ]]; then
+            echo "ERROR: installed package did not expose a runnable executable"
+            exit 1
+          fi
+          echo "Installed executable: $exe"
+          echo "VENERA_EXE=$exe" >> "$GITHUB_ENV"
+
+      - name: Run installed application in Xvfb, interact through GUI and screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DISPLAY=:99
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export GDK_BACKEND=x11
+          export NO_AT_BRIDGE=0
+          export HOME="$RUNNER_TEMP/venera-official-ui-home"
+          export XDG_CONFIG_HOME="$HOME/.config"
+          export XDG_DATA_HOME="$HOME/.local/share"
+          export XDG_CACHE_HOME="$HOME/.cache"
+          mkdir -p "$HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$VENERA_UI_REPORT_DIR"
+          Xvfb :99 -screen 0 1440x900x24 +extension GLX -nolisten tcp \
+            > "$VENERA_UI_REPORT_DIR/xvfb.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 35); do
+            if xdpyinfo -display :99 >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          xdpyinfo -display :99 | head -20
+          dbus-run-session -- /usr/bin/python3 ci/release_desktop_ui_probe.py
+
+      - name: Publish observed facts to GitHub run summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$VENERA_UI_REPORT_DIR/summary.md" ]]; then
+            cat "$VENERA_UI_REPORT_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '### GUI smoke test never reached app launch; check setup logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload screenshots and sanitized UI diagnostics even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-venera-desktop-screenshots-${{ github.run_number }}
+          path: |
+            release-ui-report/*.png
+            release-ui-report/*.json
+            release-ui-report/*.md
+            release-ui-report/*.log
+          retention-days: 14
+          if-no-files-found: warn
