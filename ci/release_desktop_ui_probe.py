@@ -269,10 +269,38 @@ def run():
     snap("catalog-url-entered")
     mark("source-url", "INFO", "entered the maintained GitHub Raw index URL")
     click_point(675, 451)
-    time.sleep(12)
+    time.sleep(9)
     snap("catalog-preview")
-    mark("ui.catalog-preview", "INFO", "captured actual response after Detect and preview")
-    return False
+    mark("ui.catalog-preview", "PASS", "official Venera displayed source catalog preview")
+    # v1.17.0 preview screenshot: both entries checked and the genuine
+    # Install selected (2) button is at x=597..760, y=512..544.
+    click_point(675, 527)
+    time.sleep(5)
+    snap("source-installation-started")
+
+    present = {}
+    for attempt in range(12):
+        present = find_installed()
+        if len(present) == 2:
+            break
+        time.sleep(5)
+    snap("installation-result")
+    mark("installed.after", "INFO", ", ".join(sorted(present)) or "none")
+    for key_name in ("nhentai", "ehentai"):
+        status = "PASS" if key_name in present else "FAIL"
+        mark("installed." + key_name, status,
+             "file installed under app data directory" if status == "PASS"
+             else "script was not committed to application data")
+    if len(present) != 2:
+        snap("installation-failed")
+        return False
+
+    # The left navigation is available on both compact and expanded layouts.
+    click_point(49, 181)
+    time.sleep(8)
+    snap("explore-after-install")
+    mark("explore.screenshot", "INFO", "real Explore page captured for follow-up interaction")
+    return True
 
 
 success = False
