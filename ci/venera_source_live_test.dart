@@ -266,6 +266,19 @@ void main() {
     await SingleInstanceCookieJar.createInstance(directory: tempDir!.path);
     await JsEngine().init();
     engineReady = true;
+    // The runtime source bridge resolves per-source settings/data through this
+    // registry. Parsing JS alone is not equivalent to installing it in Venera.
+    configureComicSourceRegistry(
+      all: () => sources.values.toList(growable: false),
+      find: (key) => sources[key],
+      fromIntKey: (key) {
+        for (final source in sources.values) {
+          if (source.intKey == key) return source;
+        }
+        return null;
+      },
+      isEmpty: () => sources.isEmpty,
+    );
     ImageDownloader.configureSourceImageLoading(
       thumbnailLoadingConfig: (key, url) async {
         final getConfig = sources[key]?.getThumbnailLoadingConfig;
