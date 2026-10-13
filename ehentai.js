@@ -4,7 +4,7 @@
 class EHentaiSource extends ComicSource {
     name = "E-Hentai";
     key = "ehentai"; // Preserve previously installed source identity.
-    version = "2.0.0";
+    version = "2.1.0";
     minAppVersion = "1.16.0";
     url = "https://raw.githubusercontent.com/MoYangking/venera_comic_js/main/ehentai.js";
 
@@ -55,7 +55,7 @@ class EHentaiSource extends ComicSource {
 
     absolute(raw, from = this.baseUrl + "/") {
         const href = String(raw || "").trim().replace(/&amp;/g, "&");
-        if (!href || href.startsWith("#") || /^javascript:/i.test(href)) return "";
+        if (!href || href.startsWith("#") || /^(?:javascript|data|blob|file|about):/i.test(href)) return "";
         if (/^https?:\/\//i.test(href)) return href;
         if (href.startsWith("//")) return "https:" + href;
         const parsed = String(from).match(/^(https?:\/\/[^/]+)(\/[^?#]*)?/i);
@@ -89,6 +89,12 @@ class EHentaiSource extends ComicSource {
             throw new Error("E-Hentai: HTTP " + response.status + hint);
         }
         const body = String(response.body || "");
+        // Without a permitted ExHentai session the server may return HTTP 200
+        // with a completely empty document instead of an HTTP error.
+        if (url.includes("exhentai.org") &&
+            (!body.trim() || /<body\b[^>]*>\s*<\/body>/i.test(body))) {
+            throw new Error("ExHentai is blank: login or access permission required");
+        }
         if (!body.trim().startsWith("<")) {
             const hint = /IP|ban|limit/i.test(body) ? " (IP quota or restriction)" : "";
             throw new Error("E-Hentai returned a non-HTML response" + hint);
@@ -164,7 +170,7 @@ class EHentaiSource extends ComicSource {
             "5-Image Set", "6-Cosplay", "7-Asian Porn", "8-Non-H", "9-Western"
         ], default: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] },
         { label: "Minimum rating", type: "dropdown", options: [
-            "-Any", "1-1", "2-2", "3-3", "4-4", "5-5"
+            "-Any", "2-2", "3-3", "4-4", "5-5"
         ] },
         { label: "Language", type: "dropdown", options: [
             "-Any", "chinese-Chinese", "english-English", "japanese-Japanese"
@@ -186,7 +192,7 @@ class EHentaiSource extends ComicSource {
         if (lang && !/(?:^|\s)language:/i.test(term)) term += " language:" + lang;
         let url = this.baseUrl + "/?f_search=" + encodeURIComponent(term);
         if (excludedMask) url += "&f_cats=" + excludedMask;
-        if (["1", "2", "3", "4", "5"].includes(choices[1])) url += "&f_srdd=" + choices[1];
+        if (["2", "3", "4", "5"].includes(choices[1])) url += "&f_srdd=" + choices[1];
         return url;
     }
 
@@ -287,13 +293,12 @@ class EHentaiSource extends ComicSource {
             const rating = ratingText.match(/(?:average|rating)\s*:\s*(\d+(?:\.\d+)?)/i);
             const favoriteText = document.querySelector("#favoritelink")?.text || "";
             const isFavorite = favoriteText ? !/add to favorites/i.test(favoriteText) : false;
-            const favNode = document.querySelector("#fav > div") || document.querySelector("#fav")?.children?.[0];
-            const favStyle = String(favNode?.attributes?.style || "");
+            // The favorite-folder sprite can be on #fav itself or a child.
+            const favStyle = String(document.querySelector("#fav")?.attributes?.style ||
+                document.querySelector("#fav > div")?.attributes?.style || "");
             const pos = favStyle.match(/background-position:\s*0px\s+-(\d+)px/i);
             const folderIndex = pos ? (Number(pos[1]) - 2) / 19 : -1;
-            const thumbs = document.querySelectorAll("#gdt img")
-                .map(node => this.absolute(node.attributes?.["data-src"] || node.attributes?.src || ""))
-                .filter(Boolean);
+            const thumbs = this.galleryThumbnailPairs(document, id).thumbnails;
             const info = {
                 title, subtitle, cover: this.absolute(coverSrc), tags,
                 chapters: null, maxPage: count ? Number(count[1]) : 0,
@@ -340,28 +345,48 @@ class EHentaiSource extends ComicSource {
         return pages;
     }
 
+    // Inspected 2026-10-13: #gdt is often the gt200 *container* and each
+    // anchor has a background-image sprite div, not an img or .gdtm descendant.
+    // Parse each anchor as one image to preserve page order and sprite offsets.
+    galleryThumbnailPairs(document, galleryUrl) {
+        const urls = [];
+        const thumbnails = [];
+        const fallbackImages = document.querySelectorAll("#gdt img");
+        const anchors = document.querySelectorAll("#gdt a");
+        for (let i = 0; i < anchors.length; i++) {
+            const anchor = anchors[i];
+            const pageUrl = this.absolute(anchor.attributes?.href || "", galleryUrl);
+            if (!/^https:\/\/(?:e-hentai\.org|exhentai\.org)\/s\/[a-z0-9]+\/\d+-\d+/i.test(pageUrl)) continue;
+            urls.push(pageUrl);
+            const image = anchor.querySelector("img") || fallbackImages[i];
+            let thumb = this.absolute(image?.attributes?.["data-src"] || image?.attributes?.src || "", galleryUrl);
+            if (/^data:/i.test(thumb)) thumb = "";
+            if (!thumb) {
+                const css = String(anchor.querySelector("div")?.attributes?.style || "");
+                const background = css.match(/url\(\s*['"]?(https?:\/\/[^)'"\s]+)['"]?\s*\)/i);
+                const position = css.match(/\)\s*(-?\d+)px\s+(-?\d+)(?:px)?(?:\s|;|$)/i);
+                const width = css.match(/width\s*:\s*(\d+)px/i);
+                const height = css.match(/height\s*:\s*(\d+)px/i);
+                if (background && position && width && height) {
+                    const x = Math.max(0, -Number(position[1]));
+                    const y = Math.max(0, -Number(position[2]));
+                    const w = Number(width[1]);
+                    const h = Number(height[1]);
+                    if (w > 0 && h > 0) thumb = background[1] +
+                        "@x=" + x + "-" + (x + w) + "&y=" + y + "-" + (y + h);
+                }
+            }
+            if (thumb) thumbnails.push(thumb);
+        }
+        return { urls, thumbnails };
+    }
+
     async loadThumbnails(rawId, next) {
         const id = this.galleryUrl(rawId);
         const p = next == null ? 0 : Math.max(0, Number(next) || 0);
         const document = await this.html(id + (p ? "?p=" + p : ""));
         try {
-            const urls = document.querySelectorAll("#gdt a").map(a => this.absolute(a.attributes?.href || "", id))
-                .filter(u => this.isSiteUrl(u) && /\/s\//.test(u));
-            const thumbnails = document.querySelectorAll("#gdt img").map(e =>
-                this.absolute(e.attributes?.["data-src"] || e.attributes?.src || "", id)).filter(Boolean);
-            // In compact thumbnail mode E-H uses CSS sprites instead of <img> tags.
-            if (!thumbnails.length) for (const el of document.querySelectorAll("#gdt .gdtm > div, #gdt .gt100 > a > div")) {
-                const css = String(el.attributes?.style || "");
-                const img = css.match(/url\(['"]?(https?:\/\/[^)'"\s]+)['"]?\)/);
-                if (!img) continue;
-                const x = css.match(/(?:\)|\s)-\s*(\d+)px/i);
-                const w = css.match(/width\s*:\s*(\d+)px/i);
-                const h = css.match(/height\s*:\s*(\d+)px/i);
-                let link = img[1];
-                if (x && w) link += "@x=" + x[1] + "-" + (Number(x[1]) + Number(w[1]));
-                if (h) link += (x && w ? "&" : "@") + "y=0-" + h[1];
-                thumbnails.push(link);
-            }
+            const { urls, thumbnails } = this.galleryThumbnailPairs(document, id);
             const nav = document.querySelectorAll("table.ptb a").map(a => String(a.attributes?.href || ""));
             const hasNext = nav.some(link => {
                 const m = link.match(/[?&]p=(\d+)/);
