@@ -237,6 +237,10 @@ def run():
     startup_rendered = False
     for i in range(42):
         try:
+            # scrot refuses to replace an existing file by default.
+            # Delete the prior probe before each new frame capture.
+            if ready_capture.exists():
+                ready_capture.unlink()
             shell(["scrot", "-z", str(ready_capture)], timeout=12, check=True)
             if ready_capture.stat().st_size >= 27000:
                 startup_rendered = True
