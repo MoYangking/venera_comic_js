@@ -246,9 +246,21 @@ def run():
         return False
 
     # The stable source-manager page puts Add source in the top-left content row.
-    # Manager expands to 1380x850 after navigation. The Add source button
-    # in the verified screenshot is at x=245..382, y=99..132.
-    click_point(318, 116)
+    # The desktop changes between compact (892px, sidebar 86px) and expanded
+    # (1380px, sidebar 228px). Read the actual X11 window width first.
+    rows = visible_windows().splitlines()
+    ident = next((row.split()[0] for row in rows if "venera" in row.casefold()), "")
+    geometry = shell(["xdotool", "getwindowgeometry", "--shell", ident], timeout=8)
+    width_match = re.search(r"^WIDTH=(\\d+)$", geometry, re.MULTILINE)
+    width = int(width_match.group(1)) if width_match else 0
+    mark("desktop.geometry", "INFO", "window width=%s, raw=%s" % (width, geometry.replace("\\n", " ")[:170]))
+    if width and width < 1050:
+        click_point(172, 125)
+    elif width:
+        click_point(312, 115)
+    else:
+        mark("navigation.add-source", "FAIL", "Cannot determine window size")
+        return False
     snap("source-import-dialog")
     mark("ui.coordinate-probe", "INFO",
          "Captured genuine GUI after entering Comic Source and invoking Add source")
