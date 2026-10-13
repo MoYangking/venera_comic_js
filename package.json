@@ -1,0 +1,9 @@
+{
+  "name": "venera_comic_js",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VeneraNext comic source catalog",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  }
+}
