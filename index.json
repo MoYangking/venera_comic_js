@@ -2,15 +2,15 @@
   {
     "name": "nhentai",
     "key": "nhentai",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "fileName": "nhentai.js",
-    "description": "nhentai.net: latest galleries, search, details and reading"
+    "description": "nhentai.net: API v2 browse, hot picks, ranked search, categories, gallery details, online favorites and reading"
   },
   {
     "name": "E-Hentai",
     "key": "ehentai",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "fileName": "ehentai.js",
-    "description": "e-hentai.org: latest/popular galleries, search, details and reading"
+    "description": "E-Hentai/ExHentai: four listing modes, search filters, ranked lists, account favorites and lazy image resolution"
   }
 ]
