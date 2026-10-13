@@ -230,6 +230,30 @@ def run():
     # These client coordinates were verified against an actual v1.17.0 startup screenshot:
     # the Home/Comic Source card is visible at screen x=102..889, y=488..547.
     # Capture each transition for human inspection instead of guessing success.
+    # X11 creates its window before Flutter first paints the content.
+    # A near-empty/Xvfb-black capture is typically < 16 KB while the actual
+    # v1.17.0 Home screen has been 37-45 KB. Wait for actual paint first.
+    ready_capture = OUT / "startup-readiness-probe.png"
+    startup_rendered = False
+    for i in range(42):
+        try:
+            shell(["scrot", "-z", str(ready_capture)], timeout=12, check=True)
+            if ready_capture.stat().st_size >= 27000:
+                startup_rendered = True
+                break
+        except Exception:
+            pass
+        if app_pid.poll() is not None:
+            break
+        time.sleep(2)
+    if not startup_rendered:
+        mark("desktop.first-paint", "FAIL",
+             "app X11 window exists but no nonblank Flutter screen after 84 seconds")
+        snap("app-no-first-paint")
+        return False
+    mark("desktop.first-paint", "PASS",
+         "Flutter home screen painted: %d bytes, attempt=%d" %
+         (ready_capture.stat().st_size, i + 1))
     snap("application-started")
     initial = find_installed()
     mark("installed.before", "INFO", ", ".join(initial) or "empty")
