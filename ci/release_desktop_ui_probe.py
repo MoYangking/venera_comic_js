@@ -262,19 +262,21 @@ def run():
         mark("navigation.add-source", "FAIL", "Cannot determine window size")
         return False
     snap("source-import-dialog")
-    # Official v1.17.0 compact Add source dialog screenshot: field at
-    # x=160..759,y=325..366; Detect and preview at x=591..759,y=434..466.
-    click_point(450, 346)
+    # Modal is always centered. In expanded layout its center moves
+    # +230px right and +115px down versus the verified compact screenshot.
+    offset_x = 230 if width >= 1050 else 0
+    offset_y = 115 if width >= 1050 else 0
+    click_point(450 + offset_x, 346 + offset_y)
     type_text(SOURCE_CATALOG)
     snap("catalog-url-entered")
-    mark("source-url", "INFO", "entered the maintained GitHub Raw index URL")
-    click_point(675, 451)
+    mark("source-url", "INFO", "typed raw catalog URL (visually inspect screenshot)")
+    click_point(675 + offset_x, 451 + offset_y)
     time.sleep(9)
     snap("catalog-preview")
-    mark("ui.catalog-preview", "PASS", "official Venera displayed source catalog preview")
-    # v1.17.0 preview screenshot: both entries checked and the genuine
-    # Install selected (2) button is at x=597..760, y=512..544.
-    click_point(675, 527)
+    mark("ui.catalog-preview", "INFO", "captured preview; not asserting it succeeded without inspecting screenshot")
+    # Compact preview screenshot: Install selected (2) at x=597..760,
+    # y=512..544. The expanded layout moves both coordinates accordingly.
+    click_point(675 + offset_x, 527 + offset_y)
     time.sleep(5)
     snap("source-installation-started")
 
