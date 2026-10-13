@@ -4,7 +4,7 @@
 class NhentaiSource extends ComicSource {
     name = "nhentai";
     key = "nhentai"; // Keep stable for reading history and saved comics.
-    version = "2.0.0";
+    version = "2.1.0";
     minAppVersion = "1.16.0";
     url = "https://raw.githubusercontent.com/MoYangking/venera_comic_js/main/nhentai.js";
 
@@ -121,7 +121,12 @@ class NhentaiSource extends ComicSource {
         if (!item || item.id == null) return null;
         const title = item.title && typeof item.title === "object" ? item.title : {};
         const tags = Array.isArray(item.tags) ? item.tags : [];
-        const language = tags.find(tag => tag && tag.type === "language")?.name || "";
+        // Actual API v2 list responses expose tag_ids, not full tag objects.
+        // The language IDs are stable source identifiers, not guessed from titles.
+        const tagIds = Array.isArray(item.tag_ids) ? item.tag_ids.map(Number) : [];
+        const language = tags.find(tag => tag && tag.type === "language")?.name ||
+            (tagIds.includes(12227) ? "english" : tagIds.includes(6346) ? "japanese" :
+                tagIds.includes(29963) ? "chinese" : "");
         return new Comic({
             id: String(item.id),
             title: String(item.english_title || (typeof item.title === "string" ? item.title :
