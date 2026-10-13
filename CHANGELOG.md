@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0 - 2026-10-13
+
+- Correct gallery preview extraction for current CSS-sprite layouts.
+- Preserve thumbnails and reading order across multiple gallery pages.
+- Improve handling of list-language metadata and unavailable account-only pages.
+- Align search rating options with the inspected website.
+- Add nine browser-evidence-based regression tests (29 total).
+- Document HTTP, DOM, pagination and client limitations in `docs/live-site-findings.md`.
+
+
 ## 2.0.0 — 2026-10-13
 
 - Keep stable source keys `nhentai` and `ehentai` and stable existing gallery IDs.
