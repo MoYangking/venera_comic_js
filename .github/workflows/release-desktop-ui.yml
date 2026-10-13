@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-            xvfb x11-utils xdotool wmctrl scrot dbus-x11 at-spi2-core \
+            xvfb openbox x11-utils xdotool wmctrl scrot dbus-x11 at-spi2-core \
             python3-pyatspi libgtk-3-0 libsqlite3-0 \
             libgl1-mesa-dri fonts-noto-cjk
 
@@ -107,12 +107,26 @@ jobs:
             sleep 1
           done
           xdpyinfo -display :99 | head -20
+          openbox --sm-disable > "$VENERA_UI_REPORT_DIR/openbox.log" 2>&1 &
+          wm_pid=$!
+          trap 'kill "$wm_pid" "$pid" 2>/dev/null || true' EXIT
+          sleep 2
+          echo 'Window manager process:'
+          ps -p "$wm_pid" -o pid,args || true
           dbus-run-session -- /usr/bin/python3 ci/release_desktop_ui_probe.py
 
       - name: Publish observed facts to GitHub run summary
         if: always()
         shell: bash
         run: |
+          echo "=== Official VeneraNext desktop log (last 80 lines) ==="
+          if [[ -f "$VENERA_UI_REPORT_DIR/venera-process.log" ]]; then
+            tail -n 80 "$VENERA_UI_REPORT_DIR/venera-process.log"
+          fi
+          echo "=== X11/Openbox status ==="
+          if [[ -f "$VENERA_UI_REPORT_DIR/openbox.log" ]]; then
+            tail -n 20 "$VENERA_UI_REPORT_DIR/openbox.log"
+          fi
           if [[ -f "$VENERA_UI_REPORT_DIR/summary.md" ]]; then
             cat "$VENERA_UI_REPORT_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
           else
