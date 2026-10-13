@@ -262,10 +262,16 @@ def run():
         mark("navigation.add-source", "FAIL", "Cannot determine window size")
         return False
     snap("source-import-dialog")
-    mark("ui.coordinate-probe", "INFO",
-         "Captured genuine GUI after entering Comic Source and invoking Add source")
-    # Pause after the first visual check; later test stages must be driven by
-    # inspected screenshots, not blind coordinate guessing.
+    # Official v1.17.0 compact Add source dialog screenshot: field at
+    # x=160..759,y=325..366; Detect and preview at x=591..759,y=434..466.
+    click_point(450, 346)
+    type_text(SOURCE_CATALOG)
+    snap("catalog-url-entered")
+    mark("source-url", "INFO", "entered the maintained GitHub Raw index URL")
+    click_point(675, 451)
+    time.sleep(12)
+    snap("catalog-preview")
+    mark("ui.catalog-preview", "INFO", "captured actual response after Detect and preview")
     return False
 
 
