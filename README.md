@@ -62,6 +62,24 @@ CHANGELOG.md                # 更新记录
 - ExHentai：当前未登录会发生重定向并显示空页面；扩展会提示需要登录或相应访问权限。
 - 实测参考仅代表 2026-10-13 当前网络环境，页面和接口可能再次改变；不能代替真机测试。
 
+## 真实 Venera-Next 联网集成测试（GitHub Actions）
+
+除 Node.js 的离线单元测试外，本仓库还提供 [**Venera-Next real runtime / live sources**](.github/workflows/venera-live.yml)。它检出上游 Venera-Next，编译真实 Flutter QuickJS 原生插件和 Rust HTTP 库，并执行 [Flutter 集成测试](ci/venera_source_live_test.dart)。
+
+在仓库顶部打开 **Actions → Venera-Next real runtime / live sources → Run workflow**，可选择站点（both/nhentai/ehentai）、是否实际下载封面与首图、上游 Venera-Next 的分支或版本。
+
+源文件、测试代码或工作流有变更时自动触发；另在每周一和周四定期运行。查看 Actions 作业摘要及 venera-live-report Artifact 内的 JSON/Markdown 报告。测试无需登录账号，不会上传作品标题、图片字节、Cookie 或 API Key；GitHub Runner 的出口 IP 若触发 403/429 会明确标为失败。
+
+| 测试项 | 实际使用的 Venera-Next 接口 |
+| --- | --- |
+| 导入 | ComicSourceParser.parse / initializeRuntime |
+| 搜索、最新及翻页 | searchPageData / explorePages |
+| 热门及排行 | loadMultiPart / loadNext / rankingData |
+| 漫画详情及页面 | loadComicInfo / loadComicPages |
+| 封面与第一页下载 | ImageDownloader.loadThumbnail / loadComicImage；校验完整图片字节及文件头 |
+
+**限制**：这是使用 Venera-Next **真实 QuickJS/Flutter 原生运行时**的无头集成测试，不是 Android 图形界面自动化，也不模拟账号登录或整本漫画永久离线保存。下载媒体仅进入 Runner 临时缓存，作业结束后删除。可选 Actions Secret VENERA_HTTP_PROXY 用于普通 HTTP 代理；Telegram MTProto 不适用。
+
 ## 开发和验证
 
 需要 Node.js 18+，不需要安装 npm 包：
