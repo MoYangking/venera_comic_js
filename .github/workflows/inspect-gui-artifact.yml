@@ -1,0 +1,29 @@
+name: Inspect failed official GUI screenshots
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-gui-artifact.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Read prior GUI screenshots from the same GitHub repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p previous
+          gh run download 38408032378 -n official-venera-desktop-screenshots-2 -D previous
+          find previous -maxdepth 2 -type f -printf '%p %s bytes\n'
+          for file in previous/01-application-started.png previous/02-source-tile-not-found.png; do
+            if [[ -f "$file" ]]; then
+              printf '\nGITHUB_DESKTOP_SCREENSHOT_START:%s\n' "$(basename "$file")"
+              base64 -w0 "$file"
+              printf '\nGITHUB_DESKTOP_SCREENSHOT_END:%s\n' "$(basename "$file")"
+            fi
+          done
